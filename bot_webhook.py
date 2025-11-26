@@ -56,12 +56,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_results(update, context)
         return ConversationHandler.END
 
-    # ===== دکمه جدید: شروع مجدد =====
     elif query.data == 'restart':
         await query.message.reply_text("شروع مجدد انجام شد.")
         return await start(update, context)
 
-    # ===== دکمه جدید: مشاوره =====
     elif query.data == 'contact':
         await query.message.reply_text("📞 شماره مشاوره و استعلام قیمت:\n09333333333")
         return ConversationHandler.END
@@ -118,7 +116,7 @@ async def get_depth(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return DEPTH
 
 
-# ========= نسخه ادغام‌شده تابع show_results ==========
+# ========= تابع show_results با دکمه‌های جدید ==========
 async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = context.user_data
     env = data['env']
@@ -150,7 +148,6 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("📞 مشاوره و استعلام قیمت", callback_data="contact")
         ]
     ]
-
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.callback_query.message.reply_text("لطفاً انتخاب کنید:", reply_markup=reply_markup)
 
@@ -179,6 +176,9 @@ conv_handler = ConversationHandler(
 )
 
 application.add_handler(conv_handler)
+
+# ======= اضافه کردن handler دکمه‌های restart و contact =======
+application.add_handler(CallbackQueryHandler(button, pattern='^(restart|contact)$'))
 
 # ======= Flask Routes =======
 @app_flask.route(f"/{TOKEN}", methods=["POST"])
