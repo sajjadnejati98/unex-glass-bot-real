@@ -1,7 +1,8 @@
 import logging
 import asyncio
+import os
 from flask import Flask, request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     CallbackQueryHandler, ConversationHandler, ContextTypes, filters
@@ -28,8 +29,7 @@ logger = logging.getLogger(__name__)
 # ======= Flask App =======
 app_flask = Flask(__name__)
 
-# ======= Telegram Bot و Application =======
-bot = Bot(TOKEN)
+# ======= Telegram Application =======
 application = ApplicationBuilder().token(TOKEN).build()
 
 # ======= Handlers =======
@@ -46,24 +46,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     if query.data == 'fill_info':
         await query.message.reply_text("1- محیط کل شیشه ها را وارد کنید (متر):")
         return ENV
-
     elif query.data in ["881", "882"]:
         context.user_data['glue_choice'] = query.data
         await show_results(update, context)
         return ConversationHandler.END
-
-    elif query.data == 'restart':
-        await query.message.reply_text("شروع مجدد انجام شد.")
-        return await start(update, context)
-
-    elif query.data == 'contact':
-        await query.message.reply_text("📞 شماره مشاوره و استعلام قیمت:\n09333333333")
-        return ConversationHandler.END
-
 
 async def get_env(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -115,8 +104,6 @@ async def get_depth(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("لطفاً عدد معتبر وارد کنید.")
         return DEPTH
 
-
-# ========= تابع show_results با دکمه‌های جدید ==========
 async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = context.user_data
     env = data['env']
@@ -133,15 +120,6 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     desiccant = (env * 3.5 * thickness) / 1000
     spacer = ((count * 4 * depth) / 100) - env
 
-    await update.callback_query.message.reply_text(
-        f"✅ نتایج محاسبه شده:\n"
-        f"1- حجم چسب مصرفی: {volume_glue:.2f} لیتر\n"
-        f"2- وزن چسب مصرفی: {weight_glue:.2f} کیلوگرم\n"
-        f"3- بوتیل مصرفی: {butyl:.2f} کیلوگرم\n"
-        f"4- رطوبت‌گیر مصرفی: {desiccant:.2f} کیلوگرم\n"
-        f"5- اسپیسر مصرفی: {spacer:.2f} متر"
-    )
-
     keyboard = [
         [
             InlineKeyboardButton("🔄 شروع مجدد", callback_data="restart"),
@@ -149,13 +127,35 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.callback_query.message.reply_text("لطفاً انتخاب کنید:", reply_markup=reply_markup)
 
+    await update.callback_query.message.reply_text(
+        f"✅ نتایج محاسبه شده:\n"
+        f"1- حجم چسب مصرفی: {volume_glue:.2f} لیتر\n"
+        f"2- وزن چسب مصرفی: {weight_glue:.2f} کیلوگرم\n"
+        f"3- بوتیل مصرفی: {butyl:.2f} کیلوگرم\n"
+        f"4- رطوبت‌گیر مصرفی: {desiccant:.2f} کیلوگرم\n"
+        f"5- اسپیسر مصرفی: {spacer:.2f} متر",
+        reply_markup=reply_markup
+    )
+
+async def handle_result_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "restart":
+        await start(update, context)
+        return ConversationHandler.END
+
+    elif query.data == "contact":
+        await query.message.reply_text(
+            "📞 برای مشاوره و استعلام قیمت، با شماره زیر تماس بگیرید:\n\n📱 `09333333333`",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ عملیات لغو شد.")
     return ConversationHandler.END
-
 
 # ======= Conversation Handler =======
 conv_handler = ConversationHandler(
@@ -176,27 +176,26 @@ conv_handler = ConversationHandler(
 )
 
 application.add_handler(conv_handler)
-
-# ======= اضافه کردن handler دکمه‌های restart و contact =======
-application.add_handler(CallbackQueryHandler(button, pattern='^(restart|contact)$'))
+application.add_handler(CallbackQueryHandler(handle_result_buttons, pattern='^(restart|contact)$'))
 
 # ======= Flask Routes =======
+
 @app_flask.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
+    update = Update.de_json(request.get_json(force=True), application.bot)
     import asyncio
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-
+    
     if not hasattr(app_flask, '_app_initialized'):
-        loop.run_until_complete(bot.initialize())
+        loop.run_until_complete(application.bot.initialize())
         loop.run_until_complete(application.initialize())
         loop.run_until_complete(application.start())
         app_flask._app_initialized = True
-
+    
     loop.run_until_complete(application.process_update(update))
     return "OK"
 
